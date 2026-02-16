@@ -1486,57 +1486,75 @@ function InstallXO {
     # if xen orchestra configuration file doesn't exist or configuration update is not disabled in xo-install.cfg, we create it
     if [[ ! -f "$CONFIGPATH/.config/xo-server/config.toml" ]] || [[ "$CONFIGUPDATE" == "true" ]]; then
 
+        # Upstream renamed sample.config.toml to config.toml, handle both
+        local CONFIG_TEMPLATE="$INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server/sample.config.toml"
+        if [[ ! -f "$CONFIG_TEMPLATE" ]]; then
+            CONFIG_TEMPLATE="$INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server/config.toml"
+        fi
+
+        if [[ ! -f "$CONFIG_TEMPLATE" ]]; then
+            printfail "No xo-server configuration template found"
+            exit 1
+        fi
+
         echo
         printinfo "Changing redis connection address in xo-server configuration file"
-        runcmd "sed -i \"s%#uri = 'redis://redis.company.lan/42'%uri = 'redis://127.0.0.1:6379/0'%\" $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server/sample.config.toml"
+        runcmd "sed -i \"s%#uri = 'redis://redis.company.lan/42'%uri = 'redis://127.0.0.1:6379/0'%\" $CONFIG_TEMPLATE"
 
         if [[ "$PORT" != "80" ]]; then
             printinfo "Changing port in xo-server configuration file"
             # shellcheck disable=SC1117
-            runcmd "sed -i \"s/port = 80/port = $PORT/\" $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server/sample.config.toml"
+            runcmd "sed -i \"s/port = 80/port = $PORT/\" $CONFIG_TEMPLATE"
             sleep 2
         fi
 
         if [[ -n "$LISTEN_ADDRESS" ]]; then
             printinfo "Changing listen address in xo-server configuration file"
-            runcmd "sed -i \"s%^# hostname = 'localhost'%hostname = '$LISTEN_ADDRESS'%\" $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server/sample.config.toml"
+            runcmd "sed -i \"s%^# hostname = 'localhost'%hostname = '$LISTEN_ADDRESS'%\" $CONFIG_TEMPLATE"
         fi
 
         if [[ "$HTTPS" == "true" ]]; then
             printinfo "Enabling HTTPS in xo-server configuration file"
             # shellcheck disable=SC1117
-            runcmd "sed -i \"s%# cert = '.\/certificate.pem'%cert = '$PATH_TO_HTTPS_CERT'%\" $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server/sample.config.toml"
+            runcmd "sed -i \"s%# cert = '.\/certificate.pem'%cert = '$PATH_TO_HTTPS_CERT'%\" $CONFIG_TEMPLATE"
             # shellcheck disable=SC1117
-            runcmd "sed -i \"s%# key = '.\/key.pem'%key = '$PATH_TO_HTTPS_KEY'%\" $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server/sample.config.toml"
+            runcmd "sed -i \"s%# key = '.\/key.pem'%key = '$PATH_TO_HTTPS_KEY'%\" $CONFIG_TEMPLATE"
             if [[ "$AUTOCERT" == "true" ]]; then
                 # shellcheck disable=SC1117
-                runcmd "sed -i \"s%# autoCert = false%autoCert = true%\" $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server/sample.config.toml"
+                runcmd "sed -i \"s%# autoCert = false%autoCert = true%\" $CONFIG_TEMPLATE"
             fi
             if [[ "$ACME" == "true" ]]; then
-                runcmd "sed -i \"s%# \[\[http.listen\]\]%\[\[http.listen\]\]%\" $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server/sample.config.toml"
-                runcmd "sed -i \"s%# port = 443%port = 443%\" $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server/sample.config.toml"
-                runcmd "sed -i \"s%^# redirectToHttps = true%redirectToHttps = true%\" $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server/sample.config.toml"
-                runcmd "sed -i \"/^autoCert =.*/a acmeCa = '$ACME_CA'\" $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server/sample.config.toml"
-                runcmd "sed -i \"/^autoCert = .*/a acmeDomain = '$ACME_DOMAIN'\" $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server/sample.config.toml"
+                runcmd "sed -i \"s%# \[\[http.listen\]\]%\[\[http.listen\]\]%\" $CONFIG_TEMPLATE"
+                runcmd "sed -i \"s%# port = 443%port = 443%\" $CONFIG_TEMPLATE"
+                runcmd "sed -i \"s%^# redirectToHttps = true%redirectToHttps = true%\" $CONFIG_TEMPLATE"
+                runcmd "sed -i \"/^autoCert =.*/a acmeCa = '$ACME_CA'\" $CONFIG_TEMPLATE"
+                runcmd "sed -i \"/^autoCert = .*/a acmeDomain = '$ACME_DOMAIN'\" $CONFIG_TEMPLATE"
                 if [[ -n "$ACME_EMAIL" ]]; then
-                    runcmd "sed -i \"/^autoCert =.*/a acmeEmail = '$ACME_EMAIL'\" $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server/sample.config.toml"
+                    runcmd "sed -i \"/^autoCert =.*/a acmeEmail = '$ACME_EMAIL'\" $CONFIG_TEMPLATE"
                 fi
             fi
             sleep 2
         fi
         if [[ "$USESUDO" == "true" ]] && [[ "$XOUSER" != "root" ]]; then
             printinfo "Enabling useSudo in xo-server configuration file"
-            runcmd "sed -i \"s/#useSudo = false/useSudo = true/\" $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server/sample.config.toml"
+            runcmd "sed -i \"s/#useSudo = false/useSudo = true/\" $CONFIG_TEMPLATE"
             printinfo "Changing default mountsDir in xo-server configuration file"
-            runcmd "sed -i \"s%#mountsDir.*%mountsDir = '$INSTALLDIR/mounts'%\" $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server/sample.config.toml"
+            runcmd "sed -i \"s%#mountsDir.*%mountsDir = '$INSTALLDIR/mounts'%\" $CONFIG_TEMPLATE"
             runcmd "mkdir -p $INSTALLDIR/mounts"
             runcmd "chown $XOUSER:$XOUSER $INSTALLDIR/mounts"
         fi
 
         if [[ -n "$SYSLOG_TARGET" ]]; then
             printinfo "Enabling remote syslog in xo-server configuration file"
-            runcmd "sed -i \"s%#\[logs.transport.syslog\]%\[logs.transport.syslog\]%\" $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server/sample.config.toml"
-            runcmd "sed -i \"/^\[logs.transport.syslog.*/a target = '$SYSLOG_TARGET'\" $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server/sample.config.toml"
+            runcmd "sed -i \"s%#\[logs.transport.syslog\]%\[logs.transport.syslog\]%\" $CONFIG_TEMPLATE"
+            runcmd "sed -i \"/^\[logs.transport.syslog.*/a target = '$SYSLOG_TARGET'\" $CONFIG_TEMPLATE"
+        fi
+
+        # xo-server defaults / to the v6 web UI which requires a separate build.
+        # Point / to the v5 web UI unless INCLUDE_V6 is enabled.
+        if [[ "$INCLUDE_V6" != "true" ]]; then
+            printinfo "Setting default web UI to v5 (xo-web)"
+            runcmd "sed -i \"s%# '/' = '../xo-web/dist/'%'/' = '$INSTALLDIR/xo-web/dist/'%\" $CONFIG_TEMPLATE"
         fi
 
         printinfo "Activating modified configuration file"
@@ -1546,7 +1564,7 @@ function InstallXO {
             runcmd "install -o $XOUSER -g $XOUSER -m 770 -d $CONFIGPATH/.config"
         fi
         runcmd "mkdir -p $CONFIGPATH/.config/xo-server"
-        runcmd "mv -f $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server/sample.config.toml $CONFIGPATH/.config/xo-server/config.toml"
+        runcmd "mv -f $CONFIG_TEMPLATE $CONFIGPATH/.config/xo-server/config.toml"
 
     fi
 
