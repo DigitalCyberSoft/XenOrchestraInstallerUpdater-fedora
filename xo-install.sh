@@ -53,6 +53,7 @@ INSTALL_REPOS="${INSTALL_REPOS:-"true"}"
 SYSLOG_TARGET="${SYSLOG_TARGET:-""}"
 YARN_CACHE_CLEANUP="${YARN_CACHE_CLEANUP:-"false"}"
 YARN_NETWORK_TIMEOUT="${YARN_NETWORK_TIMEOUT:-"300000"}"
+INCLUDE_V6="${INCLUDE_V6:-"false"}"
 
 # set variables not changeable in configfile
 TIME=$(date +%Y%m%d%H%M)
@@ -1555,8 +1556,10 @@ function InstallXO {
     runcmd "ln -sfn $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-server $INSTALLDIR/xo-server"
     printinfo "Symlinking fresh xo-web install/update to $INSTALLDIR/xo-web"
     runcmd "ln -sfn $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-web $INSTALLDIR/xo-web"
-    printinfo "Symlinking fresh xo-web-v6 install/update to $INSTALLDIR/xo-web-v6"
-    runcmd "ln -sfn $INSTALLDIR/xo-builds/xen-orchestra-$TIME/@xen-orchestra/web $INSTALLDIR/xo-web-v6"
+    if [ "$INCLUDE_V6" == "true" ]; then
+        printinfo "Symlinking fresh xo-web-v6 install/update to $INSTALLDIR/xo-web-v6"
+        runcmd "ln -sfn $INSTALLDIR/xo-builds/xen-orchestra-$TIME/@xen-orchestra/web $INSTALLDIR/xo-web-v6"
+    fi
     printinfo "Symlinking fresh xo-cli install/update to $INSTALLDIR/xo-cli"
     runcmd "ln -sfn $INSTALLDIR/xo-builds/xen-orchestra-$TIME/packages/xo-cli $INSTALLDIR/xo-cli"
     printinfo "Symlinking xo-cli script to /usr/local/bin/xo-cli"
