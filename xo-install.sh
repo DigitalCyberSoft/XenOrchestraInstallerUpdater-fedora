@@ -1015,42 +1015,55 @@ function UpdateNodeYarn {
     local NODEV=$(runcmd_stdout "node -v 2>/dev/null| grep -Eo '[0-9.]+' | cut -d'.' -f1")
 
     if [ "$PKG_FORMAT" == "rpm" ]; then
-        # update node version if needed.
-        # For Fedora, use native packages; for others use NodeSource if allowed
-        if [[ "${NODEV:-0}" -lt "${NODEVERSION}" ]]; then
-            echo
-            printprog "node.js version is ${NODEV:-"not installed"}, upgrading to ${NODEVERSION}.x"
-
-            if [[ "$OSNAME" == "Fedora" ]]; then
-                # Use Fedora's native nodejs package
-                runcmd "dnf clean all"
-                runcmd "dnf install -y nodejs nodejs-npm"
-            elif [[ "$INSTALL_REPOS" == "true" ]]; then
-                # For RHEL-based systems, use NodeSource repository
-                runcmd "curl -sL https://rpm.nodesource.com/setup_${NODEVERSION}.x | bash -"
-                runcmd "dnf clean all"
-                runcmd "dnf install -y nodejs"
-            else
-                printfail "Node.js version update needed but INSTALL_REPOS set to false for non-Fedora system, can't continue"
-                exit 1
-            fi
-
-            printok "node.js version is ${NODEV:-"not installed"}, upgrading to ${NODEVERSION}.x"
-        else
+        if [[ "$OSNAME" == "Fedora" ]]; then
+            # Fedora uses system-provided Node.js which may differ from NODEVERSION.
+            # Accept the system version and check for available package updates.
             if [[ -z "$NODEV" ]]; then
                 echo
-                printfail "node.js not installed and INSTALL_REPOS set to false, can't continue"
-                exit 1
+                printprog "node.js not found, installing from Fedora repos"
+                runcmd "dnf install -y nodejs nodejs-npm"
+                printok "node.js installed from Fedora repos"
+            elif [[ "$TASK" == "Update" ]]; then
+                echo
+                printprog "node.js version $NODEV (Fedora system package), checking for updates"
+                runcmd "dnf update -y nodejs nodejs-npm"
+                printok "node.js version $NODEV (Fedora system package), checking for updates"
+            else
+                echo
+                printinfo "node.js version $NODEV (Fedora system package)"
             fi
+        else
+            # For RHEL-based systems, use NodeSource to match NODEVERSION
+            if [[ "${NODEV:-0}" -lt "${NODEVERSION}" ]]; then
+                echo
+                printprog "node.js version is ${NODEV:-"not installed"}, upgrading to ${NODEVERSION}.x"
 
-            if [[ "$TASK" == "Update" ]]; then
-                echo
-                printprog "node.js version already on $NODEV, checking updates"
-                runcmd "dnf update -y nodejs yarn"
-                printok "node.js version already on $NODEV, checking updates"
-            elif [[ "$TASK" == "Installation" ]]; then
-                echo
-                printinfo "node.js version already on $NODEV"
+                if [[ "$INSTALL_REPOS" == "true" ]]; then
+                    runcmd "curl -sL https://rpm.nodesource.com/setup_${NODEVERSION}.x | bash -"
+                    runcmd "dnf clean all"
+                    runcmd "dnf install -y nodejs"
+                else
+                    printfail "Node.js version update needed but INSTALL_REPOS set to false, can't continue"
+                    exit 1
+                fi
+
+                printok "node.js version is ${NODEV:-"not installed"}, upgrading to ${NODEVERSION}.x"
+            else
+                if [[ -z "$NODEV" ]]; then
+                    echo
+                    printfail "node.js not installed and INSTALL_REPOS set to false, can't continue"
+                    exit 1
+                fi
+
+                if [[ "$TASK" == "Update" ]]; then
+                    echo
+                    printprog "node.js version already on $NODEV, checking updates"
+                    runcmd "dnf update -y nodejs yarn"
+                    printok "node.js version already on $NODEV, checking updates"
+                elif [[ "$TASK" == "Installation" ]]; then
+                    echo
+                    printinfo "node.js version already on $NODEV"
+                fi
             fi
         fi
     fi
