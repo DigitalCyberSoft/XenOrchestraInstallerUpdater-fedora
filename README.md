@@ -47,6 +47,7 @@ Supported Linux distributions and versions:
 - Debian 13
 - Debian 12
 - Debian 11
+- Ubuntu 26.04
 - Ubuntu 24.04
 - Ubuntu 22.04
 
@@ -192,7 +193,7 @@ Plugins are installed according to what is specified in `PLUGINS` variable insid
 
 ### Image
 
-If you don't want to first install a VM and then use `xo-install.sh` script on it, you have the possibility to import VM image which has everything already setup. Use `xo-vm-import.sh` to do this, it'll download a prebuilt Debian 11 image which has Xen Orchestra and XenOrchestraInstallerUpdater installed.
+If you don't want to first install a VM and then use `xo-install.sh` script on it, you have the possibility to import VM image which has everything already setup. Use `xo-vm-import.sh` to do this, it'll download a prebuilt Debian 13 image which has Xen Orchestra and XenOrchestraInstallerUpdater installed.
 
 Details of image build process [here](https://github.com/ronivay/xen-orchestra-vm)
 
@@ -222,7 +223,8 @@ Built and tested on XCP-ng 8.x
 
 I run my own little implementation of automation consisting of ansible and virtual machines to test the installation on a regular basis with different operating systems. Test results are visible in badges on top of this readme.
 
-VM image is also built totally by me and distributed from webservers i maintain.
+VM image is also built from scratch by me and distributed from an object storage.
+
 
 ### Contributing
 
