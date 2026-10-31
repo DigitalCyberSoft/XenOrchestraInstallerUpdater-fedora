@@ -65,6 +65,9 @@ NODEVERSION="24"
 FORCE="false"
 INTERACTIVE="false"
 SUDOERSFILE="/etc/sudoers.d/xo-server-$XOUSER"
+# pid/process group of the command run_with_progress is running, and whether a progress line is waiting for its result
+PROGRESS_PID=""
+PROGRESS_PENDING="false"
 
 # Set path where new source is cloned/pulled
 XO_SRC_DIR="$INSTALLDIR/xo-src/xen-orchestra"
@@ -159,64 +162,281 @@ function runcmd_stdout {
     bash -c -o pipefail "$1" 2>>"$LOGFILE" | tee -a "$LOGFILE" || return 1
 }
 
-# Run yarn build with progress indication
-function run_yarn_build {
-    local build_dir="$1"
-    local build_cmd="$2"
-    local build_desc="${3:-build}"
+# format seconds as 45s or 2m05s
+function FormatDuration {
 
-    echo "+ cd $build_dir && $build_cmd" >>"$LOGFILE"
+    if [[ "$1" -ge 60 ]]; then
+        printf '%dm%02ds' $(($1 / 60)) $(($1 % 60))
+    else
+        printf '%ds' "$1"
+    fi
+}
 
-    # Start the build in background and get its PID
-    (cd "$build_dir" && bash -c "$build_cmd" >>"$LOGFILE" 2>&1) &
-    local build_pid=$!
+# one line description of what a command started by run_with_progress is doing right now, based on
+# its output so far (logfile content after byte offset $1): yarn install phase, turbo task progress
+# ($2 is the total number of turbo tasks if known) or the latest line of output
+function ProgressDetail {
 
-    # Show progress while build is running
-    local spin='-\|/'
-    local i=0
-    local elapsed=0
+    tail -c +"$(($1 + 1))" "$LOGFILE" 2>/dev/null | awk -v total="${2:-0}" '
+        {
+            line = $0
+            # keep only the latest update of lines redrawn with carriage returns, drop color codes
+            sub(/\r+$/, "", line)
+            sub(/.*\r/, "", line)
+            gsub(/\033\[[0-9;?]*[A-Za-z]/, "", line)
+            gsub(/\t/, " ", line)
+        }
+        # yarn install phases, e.g. "[3/5] Fetching packages..."
+        line ~ /^\[[0-9]+\/[0-9]+\] / { phase = line; sub(/\.+$/, "", phase); next }
+        line ~ /trouble with your network connection/ { retries++; next }
+        # turbo prefixes task output with "<package>:<task>: "
+        match(line, /^[@A-Za-z0-9._\/-]+:[A-Za-z0-9_-]+: /) {
+            pkg = substr(line, 1, RLENGTH - 2)
+            sub(/:[^:]*$/, "", pkg)
+            text = substr(line, RLENGTH + 1)
+            sub(/^ +/, "", text)
+            if (text ~ /^cache (miss|bypass)/) { started++; text = "building" }
+            else if (text ~ /^cache hit/) { started++; text = "cached" }
+            # yarn banners say nothing about progress
+            if (text != "" && text !~ /^(yarn run v[0-9]|Done in [0-9.]+s)/) current = pkg ": " text
+            next
+        }
+        line ~ /[^ ]/ { last = line }
+        END {
+            if (phase != "") {
+                out = phase
+                if (retries == 1) out = out " - 1 network retry"
+                else if (retries > 1) out = out " - " retries " network retries"
+            } else if (started > 0) {
+                out = (total + 0 > 0) ? (started "/" total " tasks") : (started " tasks")
+                if (current != "") out = out " - " current
+            } else {
+                out = last
+            }
+            print out
+        }
+    ' | LC_ALL=C tr -cd '\040-\176\n' | sed 's/^ *//'
+}
 
-    while kill -0 $build_pid 2>/dev/null; do
-        i=$(( (i+1) %4 ))
-        printf "\r${PROGRESS} Running $build_desc... %c [%ds]" "${spin:$i:1}" $elapsed
+# summary of a finished turbo run (logfile content after byte offset $1), e.g. "29 tasks, 3 cached, "
+function ProgressSummary {
+
+    tail -c +"$(($1 + 1))" "$LOGFILE" 2>/dev/null | awk '
+        /^ *Tasks: / { for (i = 2; i <= NF; i++) if ($i == "total") tasks = $(i - 1) }
+        /^ *Cached: / { cached = $2 }
+        END {
+            if (tasks != "") {
+                printf "%s tasks, ", tasks
+                if (cached + 0 > 0) printf "%s cached, ", cached
+            }
+        }
+    '
+}
+
+# the part of a failed command's output (logfile content after byte offset $1) that most likely explains the failure
+function ProgressExcerpt {
+
+    tail -c +"$(($1 + 1))" "$LOGFILE" 2>/dev/null | awk '
+        {
+            line = $0
+            sub(/\r+$/, "", line)
+            sub(/.*\r/, "", line)
+            gsub(/\033\[[0-9;?]*[A-Za-z]/, "", line)
+            lines[++n] = line
+            if (line ~ /^error /) errors[++nerrors] = line
+            if (match(line, /^ *Failed: +[^ ,]+/)) {
+                failed = substr(line, RSTART, RLENGTH)
+                sub(/^ *Failed: +/, "", failed)
+            }
+        }
+        END {
+            # turbo: last lines of the failed task, its output is prefixed with "<package>:<task>: ".
+            # stack frames and blank lines are skipped, they would push the actual error message out of view
+            if (failed != "") {
+                prefix = failed
+                sub(/#/, ":", prefix)
+                prefix = prefix ": "
+                for (i = n; i >= 1 && count < 20; i--) {
+                    if (index(lines[i], prefix) != 1) continue
+                    text = substr(lines[i], length(prefix) + 1)
+                    if (text ~ /^[ ]+at / || text !~ /[^ ]/) continue
+                    picked[++count] = text
+                }
+                if (count > 0) {
+                    print "Output of " failed ":"
+                    for (i = count; i >= 1; i--) print "  " picked[i]
+                    exit
+                }
+            }
+            # yarn: error lines
+            if (nerrors > 0) {
+                for (i = (nerrors > 10 ? nerrors - 9 : 1); i <= nerrors; i++) print errors[i]
+                exit
+            }
+            # anything else: last lines of output
+            for (i = n; i >= 1 && count < 15; i--)
+                if (lines[i] ~ /[^ ]/ && lines[i] !~ /^[ ]+at /) picked[++count] = lines[i]
+            for (i = count; i >= 1; i--) print picked[i]
+        }
+    '
+}
+
+# stop the command run_with_progress started, including all of its child processes.
+# called if the script is interrupted or exits while the command is still running
+function StopProgressJob {
+
+    if [[ -n "$PROGRESS_PID" ]]; then
+        kill -TERM -- "-$PROGRESS_PID" 2>/dev/null || true
+        local i
+        for i in {1..10}; do
+            kill -0 -- "-$PROGRESS_PID" 2>/dev/null || break
+            sleep 1
+        done
+        kill -KILL -- "-$PROGRESS_PID" 2>/dev/null || true
+        PROGRESS_PID=""
+    fi
+}
+
+# Run a long running command (git fetch, yarn install, builds) in the background and show what it is doing.
+# Output goes to the logfile just like with runcmd. On a terminal a status line shows elapsed time and the
+# latest activity, otherwise a progress line is printed whenever the activity changes and every 30 seconds.
+# If the command fails, the relevant part of its output is printed so the reason is visible right away.
+# usage: run_with_progress "<description>" "<command>" [<number of turbo tasks>]
+function run_with_progress {
+
+    local desc="$1"
+    local cmd="$2"
+    local total="${3:-}"
+    local start=$SECONDS
+    local status=0 elapsed=0 detail="" key="" last_key="" last_print=-30 line="" cols=80 offset
+    # yarn install phase or number of turbo tasks, a change of these is worth a new line when not on a terminal
+    local key_re='^(\[[0-9]+/[0-9]+\][^-]*|[0-9/]+ tasks)'
+
+    echo "+ $cmd" >>"$LOGFILE"
+    offset=$(stat -c %s "$LOGFILE")
+
+    # own session and process group so StopProgressJob can stop the whole process tree
+    setsid -w bash -c -o pipefail "$cmd" </dev/null >>"$LOGFILE" 2>&1 &
+    PROGRESS_PID=$!
+    trap StopProgressJob EXIT
+
+    while kill -0 "$PROGRESS_PID" 2>/dev/null; do
+        elapsed=$((SECONDS - start))
+        detail=$(ProgressDetail "$offset" "$total") || detail=""
+        line="$desc [$(FormatDuration "$elapsed")]"
+        if [[ -n "$detail" ]]; then
+            line="$line $detail"
+        fi
+
+        if [[ -t 1 ]]; then
+            # keep the status on one line, a wrapped line can't be redrawn
+            cols=$(tput cols 2>/dev/null) || cols=80
+            if ! [[ "$cols" =~ ^[0-9]+$ ]] || [[ "$cols" -lt 40 ]]; then
+                cols=80
+            fi
+            if [[ ${#line} -gt $((cols - 6)) ]]; then
+                line="${line:0:$((cols - 9))}..."
+            fi
+            printf '\r\033[K%b %s' "$PROGRESS" "$line"
+            PROGRESS_PENDING="true"
+        else
+            key=""
+            if [[ "$detail" =~ $key_re ]]; then
+                key="${BASH_REMATCH[1]}"
+            fi
+            if [[ "$key" != "$last_key" ]] || [[ $((elapsed - last_print)) -ge 30 ]]; then
+                printf '%b %s\n' "$PROGRESS" "$line"
+                last_key="$key"
+                last_print=$elapsed
+            fi
+        fi
         sleep 1
-        elapsed=$((elapsed+1))
     done
 
-    # Check if build succeeded
-    wait $build_pid
-    local build_status=$?
+    wait "$PROGRESS_PID" || status=$?
+    PROGRESS_PID=""
+    trap - EXIT
+    elapsed=$((SECONDS - start))
 
-    if [ $build_status -eq 0 ]; then
-        printf "\r${OK} Running $build_desc [%ds]                    \n" $elapsed
+    if [[ $status -eq 0 ]]; then
+        printok "$desc ($(ProgressSummary "$offset")$(FormatDuration "$elapsed"))"
         return 0
-    else
-        printf "\r${FAIL} Running $build_desc failed [%ds]                    \n" $elapsed
-        return 1
     fi
+
+    printfail "$desc failed after $(FormatDuration "$elapsed")"
+    ProgressExcerpt "$offset" | sed 's/^/       /' || true
+    return "$status"
+}
+
+# number of tasks a turbo build with the given filters ($2) will run in directory $1, empty if unknown.
+# the dry run lists packages without a build script too, turbo skips those
+function TurboTaskCount {
+
+    local count
+    echo "+ cd $1 && turbo run build $2 --dry=json (counting tasks)" >>"$LOGFILE"
+    count=$(bash -c -o pipefail "cd $1 && TURBO_TELEMETRY_DISABLED=1 yarn -s run turbo run build $2 --dry=json" 2>>"$LOGFILE" |
+        node -e '
+            let s = ""
+            process.stdin.on("data", d => (s += d)).on("end", () => {
+                try {
+                    const tasks = JSON.parse(s.slice(s.indexOf("{"), s.lastIndexOf("}") + 1)).tasks
+                    console.log(tasks.filter(t => t.command && t.command !== "<NONEXISTENT>").length)
+                } catch (e) {}
+            })
+        ') || count=""
+    if [[ "$count" =~ ^[0-9]+$ ]] && [[ "$count" -gt 0 ]]; then
+        echo "$count"
+    fi
+}
+
+# build packages matching the given turbo filters ($2) with progress shown as "<description>" ($1)
+function RunTurboBuild {
+
+    local dir="$INSTALLDIR/xo-builds/xen-orchestra-$TIME"
+    local total
+    total=$(TurboTaskCount "$dir" "$2")
+    # turbo.json only shows output of failed tasks, show output of tasks run so progress can be followed.
+    # failure is returned instead of letting errexit end the script here, so the caller's ERR trap
+    # (ErrorHandling) runs. traps aren't inherited by functions
+    run_with_progress "$1" "cd $dir && TURBO_TELEMETRY_DISABLED=1 yarn --network-timeout ${YARN_NETWORK_TIMEOUT} run turbo run build $2 --output-logs=new-only" "$total" || return $?
 }
 
 # make output we print pretty
 function printprog {
     echo -ne "${PROGRESS} $*"
+    PROGRESS_PENDING="true"
+}
+
+# end a progress line left by printprog or run_with_progress before printing something else.
+# with "replace" a progress line on a terminal is overwritten, as ok/fail messages repeat what it said
+function EndProgressLine {
+    if [[ "$PROGRESS_PENDING" == "true" ]]; then
+        PROGRESS_PENDING="false"
+        if [[ "${1:-}" == "replace" ]] && [[ -t 1 ]]; then
+            printf '\r\033[K'
+        else
+            echo
+        fi
+    fi
 }
 
 function printok {
-    # shellcheck disable=SC1117
-    # Clear the line and print the success message
-    printf "\r\033[K"
+    EndProgressLine replace
     echo -e "${OK} $*"
 }
 
 function printfail {
+    EndProgressLine replace
     echo -e "${FAIL} $*"
 }
 
 function printinfo {
+    EndProgressLine
     echo -e "${INFO} $*"
 }
 
 function printwarning {
+    EndProgressLine
     echo -e "${INFO} $*"
 }
 
@@ -233,7 +453,8 @@ function git_clone_robust {
         printprog "Cloning repository (attempt $((retry_count+1))/$max_retries)"
 
         # Always use shallow clone with depth 1 - we don't need history for installation
-        if git clone --depth 1 --single-branch --branch "$branch" "$repo_url" "$target_dir" 2>/dev/null; then
+        echo "+ git clone --depth 1 --single-branch --branch $branch $repo_url $target_dir" >>"$LOGFILE"
+        if git clone --depth 1 --single-branch --branch "$branch" "$repo_url" "$target_dir" >>"$LOGFILE" 2>&1; then
             clone_success=1
             printok "Repository cloned successfully"
         else
@@ -258,6 +479,9 @@ function git_clone_robust {
 # if script fails at a stage where installation is not complete, we don't want to keep the install specific directory and content
 # this is called by trap inside different functions
 function ErrorHandling {
+
+    # make sure an interrupted build isn't left running in the background
+    StopProgressJob
 
     echo
     echo
@@ -1258,8 +1482,8 @@ function PrepInstall {
     # Check if directory exists and is a valid git repository
     if [[ -d "$XO_SRC_DIR" ]] && [[ -d "$XO_SRC_DIR/.git" ]]; then
         # Directory exists and is a git repo, update it
-        runcmd "git -C \"$XO_SRC_DIR\" remote set-url origin \"${REPOSITORY}\" && \
-            git -C \"$XO_SRC_DIR\" fetch --prune && \
+        run_with_progress "Fetching latest changes" "git -C \"$XO_SRC_DIR\" remote set-url origin \"${REPOSITORY}\" && \
+            git -C \"$XO_SRC_DIR\" fetch --prune --progress && \
             git -C \"$XO_SRC_DIR\" reset --hard origin/master && \
             git -C \"$XO_SRC_DIR\" clean -xdff"
     else
@@ -1403,26 +1627,20 @@ function InstallXO {
 
     echo
     printinfo "xo-server and xo-web build takes quite a while. Grab a cup of coffee and lay back"
+    printinfo "Building with node.js $(runcmd_stdout "node -v") and yarn $(runcmd_stdout "yarn -v")"
+    printinfo "Full build output: tail -f $LOGFILE"
     echo
 
-    # Run yarn install with progress
-    printprog "Installing dependencies"
-    if runcmd "cd $INSTALLDIR/xo-builds/xen-orchestra-$TIME && yarn --network-timeout ${YARN_NETWORK_TIMEOUT}"; then
-        printok "Installing dependencies"
-    else
-        printfail "Failed to install dependencies"
-        exit 1
-    fi
+    local BUILD_START=$SECONDS
 
-    # Run yarn build with progress indicator - build separately for better visibility
-    # Build xo-server and its plugins first
-    run_yarn_build "$INSTALLDIR/xo-builds/xen-orchestra-$TIME" "TURBO_TELEMETRY_DISABLED=1 yarn --network-timeout ${YARN_NETWORK_TIMEOUT} run turbo run build --filter xo-server --filter xo-server-'*'" "xo-server build"
+    run_with_progress "Installing dependencies" "cd $INSTALLDIR/xo-builds/xen-orchestra-$TIME && yarn --network-timeout ${YARN_NETWORK_TIMEOUT}"
 
-    # Then build xo-web
-    run_yarn_build "$INSTALLDIR/xo-builds/xen-orchestra-$TIME" "TURBO_TELEMETRY_DISABLED=1 yarn --network-timeout ${YARN_NETWORK_TIMEOUT} run turbo run build --filter xo-web" "xo-web build"
+    # build xo-server with its plugins, xo-web and the v6 web interface separately so progress of each is visible
+    RunTurboBuild "Building xo-server and plugins" "--filter xo-server --filter xo-server-'*'"
+    RunTurboBuild "Building xo-web" "--filter xo-web"
+    RunTurboBuild "Building v6 web interface" "--filter @xen-orchestra/web"
 
-    # Build v6 web interface
-    run_yarn_build "$INSTALLDIR/xo-builds/xen-orchestra-$TIME" "yarn --network-timeout ${YARN_NETWORK_TIMEOUT} run turbo run build --filter @xen-orchestra/web" "v6 web interface build"
+    printinfo "Build finished in $(FormatDuration $((SECONDS - BUILD_START)))"
 
     # Install plugins (takes care of 3rd party plugins as well)
     InstallXOPlugins
@@ -1735,19 +1953,14 @@ function InstallXOProxy {
 
     echo
     printinfo "xo-proxy build takes quite a while. Grab a cup of coffee and lay back"
+    printinfo "Building with node.js $(runcmd_stdout "node -v") and yarn $(runcmd_stdout "yarn -v")"
+    printinfo "Full build output: tail -f $LOGFILE"
     echo
 
-    # Run yarn install with progress
-    printprog "Installing dependencies"
-    if runcmd "cd $INSTALLDIR/xo-builds/xen-orchestra-$TIME && yarn --network-timeout ${YARN_NETWORK_TIMEOUT}"; then
-        printok "Installing dependencies"
-    else
-        printfail "Failed to install dependencies"
-        exit 1
-    fi
+    run_with_progress "Installing dependencies" "cd $INSTALLDIR/xo-builds/xen-orchestra-$TIME && yarn --network-timeout ${YARN_NETWORK_TIMEOUT}"
 
-    # Run yarn build with progress indicator - only build proxy, not web UI
-    run_yarn_build "$INSTALLDIR/xo-builds/xen-orchestra-$TIME" "TURBO_TELEMETRY_DISABLED=1 yarn --network-timeout ${YARN_NETWORK_TIMEOUT} run turbo run build --filter @xen-orchestra/proxy" "xo-proxy build"
+    # only build proxy, not web UI
+    RunTurboBuild "Building xo-proxy" "--filter @xen-orchestra/proxy"
 
     # shutdown possibly running xo-server
     if [[ $(runcmd_stdout "pgrep -f '^([a-zA-Z0-9_\/-]+?)node.*xo-proxy'") ]]; then
