@@ -2341,8 +2341,8 @@ function CheckOS {
         exit 1
     fi
 
-    if [[ "$OSNAME" == "Fedora" ]] && [[ ! "$OSVERSION" =~ ^(41|42|43|rawhide)$ ]]; then
-        printfail "Only Fedora 41/42/43/rawhide supported"
+    if [[ "$OSNAME" == "Fedora" ]] && [[ ! "$OSVERSION" =~ ^(41|42|43|44|45|rawhide)$ ]]; then
+        printfail "Only Fedora 41/42/43/44/45/rawhide supported"
         exit 1
     fi
 
