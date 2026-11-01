@@ -60,6 +60,7 @@ COOKIE_SECURE="${COOKIE_SECURE:-"false"}"
 XO_WEB_THEME="${XO_WEB_THEME:-""}"
 DEFAULT_WEB_UI="${DEFAULT_WEB_UI:-""}"
 HIDE_SOURCE_NOTICES="${HIDE_SOURCE_NOTICES:-"true"}"
+ENABLE_XOSTOR="${ENABLE_XOSTOR:-"true"}"
 
 # set variables not changeable in configfile
 TIME=$(date +%Y%m%d%H%M)
@@ -1710,6 +1711,71 @@ function CustomizeXoWeb {
     fi
 }
 
+# replace the one occurrence of a piece of text in a source file ($1 = file, $2 = text, $3 = replacement).
+# The text is matched exactly, not as a pattern. Fails without changing the file if the text isn't
+# there exactly once
+function ReplaceInSource {
+
+    echo "+ replace in $1: $2" >>"$LOGFILE"
+    node -e '
+        const fs = require("fs")
+        const [file, text, replacement] = process.argv.slice(1)
+        const source = fs.readFileSync(file, "utf8")
+        const count = source.split(text).length - 1
+        if (count !== 1) {
+            console.error(`found ${count} times instead of once`)
+            process.exit(1)
+        }
+        fs.writeFileSync(file, source.replace(text, () => replacement))
+    ' "$1" "$2" "$3" >>"$LOGFILE" 2>&1
+}
+
+# Xen Orchestra keeps XOSTOR (hyperconverged storage on LINSTOR/DRBD) for XOA. From the sources its
+# Xen Orchestra 5 pages only say "XOSTOR is available in XOA", and creating or removing an XOSTOR, or
+# merging a pool into one that has an XOSTOR, calls XOA's licence service, which isn't in the sources.
+# XOSTOR itself is open source, so with ENABLE_XOSTOR="true" the pages are shown and the licence steps
+# are skipped when there is no licence service. If XO's code has changed so that a step can't be
+# patched, the files are restored and XOSTOR stays XOA-only in this build.
+function EnableXostor {
+
+    local BUILD_DIR="$INSTALLDIR/xo-builds/xen-orchestra-$TIME"
+    local WEB_APP="$BUILD_DIR/packages/xo-web/src/xo-app"
+    local SERVER_SRC="$BUILD_DIR/packages/xo-server/src"
+    local NOTE="xo-install.sh (ENABLE_XOSTOR)"
+    local NL=$'\n'
+
+    if [[ "$ENABLE_XOSTOR" != "true" ]]; then
+        return 0
+    fi
+
+    echo
+    printprog "Enabling XOSTOR in Xen Orchestra 5"
+    if ReplaceInSource "$WEB_APP/xostor/index.js" \
+        "{getXoaPlan() === SOURCES ? (" \
+        "{false /* XOA-only notice turned off by $NOTE */ ? (" &&
+        ReplaceInSource "$WEB_APP/sr/tab-xostor.js" \
+            "if (getXoaPlan() === SOURCES) {" \
+            "if (false) { // XOA-only notice turned off by $NOTE" &&
+        ReplaceInSource "$WEB_APP/sr/tab-xostor.js" \
+            "const xostorLicenseInfo = this.getXostorLicenseInfo()" \
+            "const xostorLicenseInfo = getXoaPlan() === SOURCES ? { supportEnabled: true, alerts: [] } : this.getXostorLicenseInfo() // licences only exist in XOA, $NOTE" &&
+        ReplaceInSource "$SERVER_SRC/api/xostor.mjs" \
+            "await Task.run({ properties: { name: 'licenses check' } }, async () => {" \
+            "if (typeof this.getLicenses === 'function') await Task.run({ properties: { name: 'licenses check' } }, async () => { // licences only exist in XOA, $NOTE" &&
+        ReplaceInSource "$SERVER_SRC/api/xostor.mjs" \
+            "await Task.run({ properties: { name: 'unbind attached licenses' } }, () =>" \
+            "if (typeof this.unbindLicense === 'function') await Task.run({ properties: { name: 'unbind attached licenses' } }, () => // licences only exist in XOA, $NOTE" &&
+        ReplaceInSource "$SERVER_SRC/xo-mixins/pool.mjs" \
+            "async function enforceHostsHaveLicense(\$defer, app, productType, hostIds) {" \
+            "async function enforceHostsHaveLicense(\$defer, app, productType, hostIds) {${NL}  if (typeof app.getLicenses !== 'function') return // licences only exist in XOA, $NOTE"; then
+        printok "Enabling XOSTOR in Xen Orchestra 5"
+    else
+        runcmd "git -C \"$BUILD_DIR\" checkout -- packages/xo-web/src/xo-app/xostor packages/xo-web/src/xo-app/sr/tab-xostor.js packages/xo-server/src/api/xostor.mjs packages/xo-server/src/xo-mixins/pool.mjs" || true
+        printfail "Enabling XOSTOR in Xen Orchestra 5"
+        echo "    Xen Orchestra's XOSTOR code has changed, XOSTOR stays XOA-only in this build"
+    fi
+}
+
 # run actual xen orchestra installation. procedure is the same for new installation and update. we always build it from scratch.
 function InstallXO {
 
@@ -1740,6 +1806,7 @@ function InstallXO {
     # web UI preferences (theme for Xen Orchestra 5, which UI opens at the root address) and xo-web customizations
     AskWebUIPreferences
     CustomizeXoWeb
+    EnableXostor
 
     echo
     printinfo "xo-server and xo-web build takes quite a while. Grab a cup of coffee and lay back"
