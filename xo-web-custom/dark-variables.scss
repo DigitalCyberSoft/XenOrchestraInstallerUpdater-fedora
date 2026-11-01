@@ -2,7 +2,7 @@
 //
 // xo-web has no dark mode of its own. This file is imported by xo-web's index.scss right
 // before Bootstrap, so Bootstrap, react-select and Chartist are compiled with dark colours.
-// What these variables don't reach is handled in overrides.scss.
+// What these variables don't reach is handled in dark-overrides.scss.
 
 $xoi-dark-bg: #181c21;
 $xoi-dark-surface: #22272e;
@@ -22,7 +22,7 @@ $gray-lightest: $xoi-dark-surface;
 $body-bg: $xoi-dark-bg;
 $body-color: $xoi-dark-text;
 $link-color: $xoi-dark-link;
-$link-hover-color: lighten($xoi-dark-link, 10%);
+$link-hover-color: #9fcfff; // $xoi-dark-link, 10% lighter
 $text-muted: $xoi-dark-text-muted;
 $hr-border-color: rgba(255, 255, 255, 0.1);
 $blockquote-border-color: $xoi-dark-border;

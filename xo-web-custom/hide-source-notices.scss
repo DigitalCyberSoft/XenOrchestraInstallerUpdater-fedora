@@ -1,0 +1,17 @@
+// Hides the notices Xen Orchestra 5 (xo-web) shows on installs from the sources, added to the end of
+// xo-web's index.scss by xo-install.sh when HIDE_SOURCE_NOTICES="true" (the default).
+//
+// Each notice is matched by the link it contains, so nothing else is hidden. The weekly
+// "Xen Orchestra from the sources" pop-up can't be hidden this way: a hidden dialog would keep the
+// keyboard focus. xo-install.sh turns it off in xo-web's code instead.
+
+// red banner at the top: "This version is not bundled with any support nor updates..."
+.alert:has(a[href*='xo_source_banner']),
+.alert:has(a[href*='#about-the-banner']) {
+  display: none !important;
+}
+
+// "No support" entry at the bottom of the side menu. The About page it links to stays at #/about
+.xo-menu-item:has(> a[href$='/about'] .text-warning) {
+  display: none !important;
+}

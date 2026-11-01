@@ -1,7 +1,7 @@
-// Dark theme for Xen Orchestra 5 (xo-web): what variables.scss can't reach.
+// Dark theme for Xen Orchestra 5 (xo-web): what dark-variables.scss can't reach.
 //
 // Appended to the end of xo-web's index.scss by xo-install.sh, so it can use the
-// $xoi-dark-* colours from variables.scss. Covers xo-web's own global styles, its
+// $xoi-dark-* colours from dark-variables.scss. Covers xo-web's own global styles, its
 // component styles (CSS modules, compiled to class names like .mc1234abcd_item, hence
 // the attribute selectors) and colours set inline from JavaScript.
 

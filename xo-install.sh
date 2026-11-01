@@ -59,6 +59,7 @@ COOKIE_SECURE="${COOKIE_SECURE:-"false"}"
 # web UI preferences, asked for when installing/updating interactively if not set (see AskWebUIPreferences)
 XO_WEB_THEME="${XO_WEB_THEME:-""}"
 DEFAULT_WEB_UI="${DEFAULT_WEB_UI:-""}"
+HIDE_SOURCE_NOTICES="${HIDE_SOURCE_NOTICES:-"true"}"
 
 # set variables not changeable in configfile
 TIME=$(date +%Y%m%d%H%M)
@@ -1658,36 +1659,54 @@ function AskWebUIPreferences {
     fi
 }
 
-# Xen Orchestra 5 (xo-web) has no dark mode of its own. With XO_WEB_THEME="dark", the stylesheets in
-# xo-web-dark/ are added to xo-web's sources before it is built: variables.scss before Bootstrap is
-# imported, overrides.scss at the end. If xo-web's stylesheets have changed so that this isn't
-# possible, the default light theme is built and the install/update carries on.
-function ApplyXoWebTheme {
-
-    if [[ "$XO_WEB_THEME" != "dark" ]]; then
-        return 0
-    fi
+# Customizations of Xen Orchestra 5 (xo-web), added to its sources before it is built. The files are in
+# xo-web-custom/. If xo-web has changed so that one can't be added, it is skipped with a warning and the
+# install/update carries on.
+#  - XO_WEB_THEME="dark": xo-web has no dark mode of its own. dark-variables.scss goes in before
+#    Bootstrap is imported, dark-overrides.scss at the end of index.scss
+#  - HIDE_SOURCE_NOTICES="true": hide-source-notices.scss hides the "no support" banner and menu entry,
+#    the weekly disclaimer pop-up is turned off in xo-app/index.js
+function CustomizeXoWeb {
 
     local BUILD_DIR="$INSTALLDIR/xo-builds/xen-orchestra-$TIME"
     local WEB_SRC="$BUILD_DIR/packages/xo-web/src"
-    local THEME_DIR="$SCRIPT_DIR/xo-web-dark"
+    local CUSTOM_DIR="$SCRIPT_DIR/xo-web-custom"
 
-    echo
-    printprog "Adding dark theme to Xen Orchestra 5"
+    if [[ "$XO_WEB_THEME" == "dark" ]]; then
+        echo
+        printprog "Adding dark theme to Xen Orchestra 5"
+        if [[ -f "$CUSTOM_DIR/dark-variables.scss" ]] && [[ -f "$CUSTOM_DIR/dark-overrides.scss" ]] &&
+            grep -qF "@import '../../../node_modules/bootstrap/scss/bootstrap';" "$WEB_SRC/index.scss" 2>/dev/null &&
+            runcmd "cp \"$CUSTOM_DIR/dark-variables.scss\" \"$WEB_SRC/_xoi-dark-variables.scss\" && cp \"$CUSTOM_DIR/dark-overrides.scss\" \"$WEB_SRC/_xoi-dark-overrides.scss\"" &&
+            runcmd "sed -i \"\\#^@import '../../../node_modules/bootstrap/scss/bootstrap';#i @import './xoi-dark-variables';\" \"$WEB_SRC/index.scss\"" &&
+            runcmd "echo \"@import './xoi-dark-overrides';\" >> \"$WEB_SRC/index.scss\"" &&
+            grep -qF "@import './xoi-dark-variables';" "$WEB_SRC/index.scss"; then
+            # state buttons take their background from xo-web's styled-components theme
+            runcmd "sed -i \"s/StateBg: '#fff'/StateBg: '#22272e'/\" \"$WEB_SRC/common/themes/base.js\"" || true
+            printok "Adding dark theme to Xen Orchestra 5"
+        else
+            runcmd "git -C \"$BUILD_DIR\" checkout -- packages/xo-web/src" || true
+            printfail "Adding dark theme to Xen Orchestra 5"
+            echo "    xo-web's stylesheets have changed, building the default light theme instead"
+        fi
+    fi
 
-    if [[ -f "$THEME_DIR/variables.scss" ]] && [[ -f "$THEME_DIR/overrides.scss" ]] &&
-        grep -qF "@import '../../../node_modules/bootstrap/scss/bootstrap';" "$WEB_SRC/index.scss" 2>/dev/null &&
-        runcmd "cp \"$THEME_DIR/variables.scss\" \"$WEB_SRC/_xoi-dark-variables.scss\" && cp \"$THEME_DIR/overrides.scss\" \"$WEB_SRC/_xoi-dark-overrides.scss\"" &&
-        runcmd "sed -i \"\\#^@import '../../../node_modules/bootstrap/scss/bootstrap';#i @import './xoi-dark-variables';\" \"$WEB_SRC/index.scss\"" &&
-        runcmd "echo \"@import './xoi-dark-overrides';\" >> \"$WEB_SRC/index.scss\"" &&
-        grep -qF "@import './xoi-dark-variables';" "$WEB_SRC/index.scss"; then
-        # state buttons take their background from xo-web's styled-components theme
-        runcmd "sed -i \"s/StateBg: '#fff'/StateBg: '#22272e'/\" \"$WEB_SRC/common/themes/base.js\"" || true
-        printok "Adding dark theme to Xen Orchestra 5"
-    else
-        runcmd "git -C \"$BUILD_DIR\" checkout -- packages/xo-web/src" || true
-        printfail "Adding dark theme to Xen Orchestra 5"
-        echo "    xo-web's stylesheets have changed, building the default light theme instead"
+    if [[ "$HIDE_SOURCE_NOTICES" == "true" ]]; then
+        echo
+        printprog "Hiding the no-support notices in Xen Orchestra 5"
+        if [[ -f "$CUSTOM_DIR/hide-source-notices.scss" ]] && [[ -f "$WEB_SRC/index.scss" ]] &&
+            runcmd "cp \"$CUSTOM_DIR/hide-source-notices.scss\" \"$WEB_SRC/_xoi-hide-source-notices.scss\"" &&
+            runcmd "echo \"@import './xoi-hide-source-notices';\" >> \"$WEB_SRC/index.scss\""; then
+            # the weekly pop-up can't be hidden with CSS, a hidden dialog would keep the keyboard focus
+            runcmd "sed -i \"s/^  displayOpenSourceDisclaimer() {\$/&\\n    return \\/\\/ turned off by xo-install.sh (HIDE_SOURCE_NOTICES)/\" \"$WEB_SRC/xo-app/index.js\"" || true
+            printok "Hiding the no-support notices in Xen Orchestra 5"
+            if ! grep -A1 "^  displayOpenSourceDisclaimer() {$" "$WEB_SRC/xo-app/index.js" 2>/dev/null | grep -qF "    return // turned off by xo-install.sh"; then
+                echo "    xo-web's code has changed, the weekly disclaimer pop-up couldn't be turned off"
+            fi
+        else
+            printfail "Hiding the no-support notices in Xen Orchestra 5"
+            echo "    xo-web's files have changed, the notices stay"
+        fi
     fi
 }
 
@@ -1718,9 +1737,9 @@ function InstallXO {
     # Fetch 3rd party plugins source code
     InstallAdditionalXOPlugins
 
-    # web UI preferences: theme for Xen Orchestra 5 and which UI opens at the root address
+    # web UI preferences (theme for Xen Orchestra 5, which UI opens at the root address) and xo-web customizations
     AskWebUIPreferences
-    ApplyXoWebTheme
+    CustomizeXoWeb
 
     echo
     printinfo "xo-server and xo-web build takes quite a while. Grab a cup of coffee and lay back"
