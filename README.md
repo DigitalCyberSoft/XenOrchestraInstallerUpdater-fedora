@@ -1,5 +1,34 @@
 # Xen Orchestra Installer / Updater
 
+### About this fork
+
+This is a fork of [ronivay/XenOrchestraInstallerUpdater](https://github.com/ronivay/XenOrchestraInstallerUpdater) that adds Fedora support and a few changes to how Xen Orchestra is built and presented. Upstream changes are ported into it regularly, so everything below this section still applies. The build badges, the Docker image and the ready-made VM image (`xo-vm-import.sh`) are upstream's, though, and don't include anything listed here.
+
+To use it, clone this repository instead of upstream's:
+```
+git clone https://github.com/DigitalCyberSoft/XenOrchestraInstallerUpdater-fedora.git
+```
+
+**What's different, and why**
+
+* **Fedora 41 and newer, including Rawhide.** Upstream supports Debian, Ubuntu and the RHEL family, but not Fedora.
+  * node.js and yarn come from Fedora's own `nodejs` and `yarnpkg` packages, and an update also updates node.js with dnf. Upstream uses NodeSource and the Yarn repository, which don't target Fedora. Xen Orchestra sometimes requires a newer node.js than Fedora ships. If that happens, the build stops with yarn's "engine node is incompatible" error, and upgrading Fedora is the fix.
+  * Valkey is used instead of Redis, which Fedora replaced with Valkey in Fedora 41.
+  * EPEL isn't used, and `libvhdi-tools` comes from the `reversejames/libvhdi` COPR.
+* **Admin credentials.** At the end of an install, the script offers to replace the default `admin@admin.net` / `admin` login with your own email and password, either typed or generated. The menu also has a **Manage admin credentials** option to create or delete admins and change passwords. A fresh install shouldn't sit on a well-known password.
+* **Uninstall.** The menu has an **Uninstall** option that removes the Xen Orchestra builds, services and configuration. Upstream has none.
+* **Readable build output.** The build shows its progress, such as yarn's phases and turbo's task counts, and the elapsed time. When a step fails, it prints the error lines instead of only pointing to the log. Upstream is silent for several minutes, and failures meant digging through the log. Git clones are shallow and retried, for unreliable connections.
+* **Self-upgrade from this fork.** With `SELFUPGRADE=true`, the script updates itself from this repository. That also happens when `xo-web-custom/` changes, since the customizations below are built from it. Upstream's self-upgrade only recognises its own repository.
+* **Xen Orchestra 5 (v5) customizations.** They're applied to the sources just before the build, and each has an option in `xo-install.cfg`. If a Xen Orchestra update changes the code one of them relies on, that customization is skipped with a warning and the build carries on.
+  * `XO_WEB_THEME="dark"` adds a dark theme to v5, which has none of its own. The theme is in `xo-web-custom/`.
+  * `DEFAULT_WEB_UI="v5"` or `"v6"` picks the web UI that opens at the root of the address. Both stay available at `/v5` and `/v6`. Interactive runs ask for these two settings once and save the answers in `xo-install.cfg`.
+  * `HIDE_SOURCE_NOTICES="true"` (the default) hides the "not bundled with any support nor updates" banner, the "No support" menu entry and the weekly disclaimer pop-up. They're noise on an install that was built from the sources on purpose.
+  * `ENABLE_XOSTOR="true"` (the default) shows the XOSTOR pages, for hyperconverged storage on LINSTOR/DRBD. When creating or removing an XOSTOR, it skips the XOA licence steps.
+    * XOSTOR is open source: LINSTOR and DRBD, XCP-ng's LinstorSR driver and Xen Orchestra's own XOSTOR code. Vates sells support for it.
+    * Built from the sources, Xen Orchestra still shows "XOSTOR is available in XOA" instead of the XOSTOR pages. Creating an XOSTOR also calls XOA's licence service, which isn't part of the sources.
+
+Like any Xen Orchestra built from the sources, none of this is supported by Vates.
+
 [![](https://img.shields.io/endpoint?url=https://xo-build-status.yawn.fi/builds/debian/status.json)](https://xo-build-status.yawn.fi/builds/debian/details.html) [![](https://img.shields.io/endpoint?url=https://xo-build-status.yawn.fi/builds/centos/status.json)](https://xo-build-status.yawn.fi/builds/centos/details.html) [![](https://img.shields.io/endpoint?url=https://xo-build-status.yawn.fi/builds/ubuntu/status.json)](https://xo-build-status.yawn.fi/builds/ubuntu/details.html) [![](https://img.shields.io/endpoint?url=https://xo-build-status.yawn.fi/builds/almalinux/status.json)](https://xo-build-status.yawn.fi/builds/almalinux/details.html)
 
 [![](https://img.shields.io/endpoint?url=https://xo-image.yawn.fi/downloads/status.json)](https://xo-image.yawn.fi/downloads/image.txt)
