@@ -56,6 +56,9 @@ YARN_NETWORK_TIMEOUT="${YARN_NETWORK_TIMEOUT:-"300000"}"
 PUBLIC_URL="${PUBLIC_URL:-""}"
 USE_FORWARDED_HEADERS="${USE_FORWARDED_HEADERS:-"false"}"
 COOKIE_SECURE="${COOKIE_SECURE:-"false"}"
+# web UI preferences, asked for when installing/updating interactively if not set (see AskWebUIPreferences)
+XO_WEB_THEME="${XO_WEB_THEME:-""}"
+DEFAULT_WEB_UI="${DEFAULT_WEB_UI:-""}"
 
 # set variables not changeable in configfile
 TIME=$(date +%Y%m%d%H%M)
@@ -1598,6 +1601,96 @@ function PrepInstall {
 
 }
 
+# save an answer given to the installer in xo-install.cfg ($1 = option, $2 = value), so it is used from now on
+function SaveConfigOption {
+
+    local NAME="$1"
+    local VALUE="$2"
+
+    if [[ ! -w "$CONFIG_FILE" ]]; then
+        printinfo "$CONFIG_FILE not writable, ${NAME}=\"${VALUE}\" is used for this run only"
+        return 0
+    fi
+
+    # replace the option where it is (commented or not), or add it at the end
+    if grep -qE "^#? *${NAME}=" "$CONFIG_FILE"; then
+        runcmd "sed -i -E '0,/^#? *${NAME}=.*/s//${NAME}=\"${VALUE}\"/' \"$CONFIG_FILE\"" || {
+            printfail "Couldn't save ${NAME} in $CONFIG_FILE"
+            return 0
+        }
+    else
+        runcmd "printf '\n%s=\"%s\"\n' '${NAME}' '${VALUE}' >> \"$CONFIG_FILE\"" || {
+            printfail "Couldn't save ${NAME} in $CONFIG_FILE"
+            return 0
+        }
+    fi
+    printinfo "Saved ${NAME}=\"${VALUE}\" in $CONFIG_FILE, change it there any time"
+}
+
+# ask for the web UI preferences that aren't set in xo-install.cfg yet and save the answers there,
+# so they are the defaults from now on. Nothing is asked when running non-interactively.
+function AskWebUIPreferences {
+
+    local ANSWER=""
+
+    if [[ "$INTERACTIVE" != "true" ]]; then
+        return 0
+    fi
+
+    if [[ -z "$XO_WEB_THEME" ]]; then
+        echo
+        read -r -p "Theme for the Xen Orchestra 5 (v5) web UI, light or dark? [light/dark] (light): " ANSWER || ANSWER=""
+        case "${ANSWER,,}" in
+            d | dark) XO_WEB_THEME="dark" ;;
+            *) XO_WEB_THEME="light" ;;
+        esac
+        SaveConfigOption XO_WEB_THEME "$XO_WEB_THEME"
+    fi
+
+    if [[ -z "$DEFAULT_WEB_UI" ]]; then
+        echo
+        read -r -p "Web UI to open at the root of the Xen Orchestra address, v5 or v6? [v5/v6] (v6): " ANSWER || ANSWER=""
+        case "${ANSWER,,}" in
+            5 | v5) DEFAULT_WEB_UI="v5" ;;
+            *) DEFAULT_WEB_UI="v6" ;;
+        esac
+        SaveConfigOption DEFAULT_WEB_UI "$DEFAULT_WEB_UI"
+    fi
+}
+
+# Xen Orchestra 5 (xo-web) has no dark mode of its own. With XO_WEB_THEME="dark", the stylesheets in
+# xo-web-dark/ are added to xo-web's sources before it is built: variables.scss before Bootstrap is
+# imported, overrides.scss at the end. If xo-web's stylesheets have changed so that this isn't
+# possible, the default light theme is built and the install/update carries on.
+function ApplyXoWebTheme {
+
+    if [[ "$XO_WEB_THEME" != "dark" ]]; then
+        return 0
+    fi
+
+    local BUILD_DIR="$INSTALLDIR/xo-builds/xen-orchestra-$TIME"
+    local WEB_SRC="$BUILD_DIR/packages/xo-web/src"
+    local THEME_DIR="$SCRIPT_DIR/xo-web-dark"
+
+    echo
+    printprog "Adding dark theme to Xen Orchestra 5"
+
+    if [[ -f "$THEME_DIR/variables.scss" ]] && [[ -f "$THEME_DIR/overrides.scss" ]] &&
+        grep -qF "@import '../../../node_modules/bootstrap/scss/bootstrap';" "$WEB_SRC/index.scss" 2>/dev/null &&
+        runcmd "cp \"$THEME_DIR/variables.scss\" \"$WEB_SRC/_xoi-dark-variables.scss\" && cp \"$THEME_DIR/overrides.scss\" \"$WEB_SRC/_xoi-dark-overrides.scss\"" &&
+        runcmd "sed -i \"\\#^@import '../../../node_modules/bootstrap/scss/bootstrap';#i @import './xoi-dark-variables';\" \"$WEB_SRC/index.scss\"" &&
+        runcmd "echo \"@import './xoi-dark-overrides';\" >> \"$WEB_SRC/index.scss\"" &&
+        grep -qF "@import './xoi-dark-variables';" "$WEB_SRC/index.scss"; then
+        # state buttons take their background from xo-web's styled-components theme
+        runcmd "sed -i \"s/StateBg: '#fff'/StateBg: '#22272e'/\" \"$WEB_SRC/common/themes/base.js\"" || true
+        printok "Adding dark theme to Xen Orchestra 5"
+    else
+        runcmd "git -C \"$BUILD_DIR\" checkout -- packages/xo-web/src" || true
+        printfail "Adding dark theme to Xen Orchestra 5"
+        echo "    xo-web's stylesheets have changed, building the default light theme instead"
+    fi
+}
+
 # run actual xen orchestra installation. procedure is the same for new installation and update. we always build it from scratch.
 function InstallXO {
 
@@ -1624,6 +1717,10 @@ function InstallXO {
 
     # Fetch 3rd party plugins source code
     InstallAdditionalXOPlugins
+
+    # web UI preferences: theme for Xen Orchestra 5 and which UI opens at the root address
+    AskWebUIPreferences
+    ApplyXoWebTheme
 
     echo
     printinfo "xo-server and xo-web build takes quite a while. Grab a cup of coffee and lay back"
@@ -1775,6 +1872,16 @@ function InstallXO {
         if [[ "$COOKIE_SECURE" == "true" ]]; then
             printinfo "Enabling secure cookies in xo-server configuration file"
             runcmd "sed -i \"/^\[http.cookies\]/a secure = true\" $CONFIG_TEMPLATE"
+        fi
+
+        # without a mount at /, xo-server picks v6 for installs from sources
+        if [[ "$DEFAULT_WEB_UI" == "v5" ]] || [[ "$DEFAULT_WEB_UI" == "v6" ]]; then
+            local DEFAULT_WEB_UI_PATH="$INSTALLDIR/xo-web/dist/"
+            if [[ "$DEFAULT_WEB_UI" == "v6" ]]; then
+                DEFAULT_WEB_UI_PATH="$INSTALLDIR/xo-web-v6/dist/"
+            fi
+            printinfo "Opening the $DEFAULT_WEB_UI web UI at the root address in xo-server configuration file"
+            runcmd "sed -i \"/^\[http.mounts\]/a '/' = '$DEFAULT_WEB_UI_PATH'\" $CONFIG_TEMPLATE"
         fi
 
         printinfo "Activating modified configuration file"

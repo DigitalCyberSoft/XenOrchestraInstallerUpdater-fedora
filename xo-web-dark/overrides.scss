@@ -1,0 +1,118 @@
+// Dark theme for Xen Orchestra 5 (xo-web): what variables.scss can't reach.
+//
+// Appended to the end of xo-web's index.scss by xo-install.sh, so it can use the
+// $xoi-dark-* colours from variables.scss. Covers xo-web's own global styles, its
+// component styles (CSS modules, compiled to class names like .mc1234abcd_item, hence
+// the attribute selectors) and colours set inline from JavaScript.
+
+// native scrollbars, date pickers and form controls
+html {
+  color-scheme: dark;
+}
+
+// status colours readable on a dark background (the brand colours stay for button backgrounds)
+.text-primary,
+a.text-primary {
+  color: $xoi-dark-link !important;
+}
+.text-success,
+.xo-status-running {
+  color: #3fb950 !important;
+}
+.text-info,
+.xo-status-suspended {
+  color: #58a6ff !important;
+}
+.text-warning,
+.xo-status-busy {
+  color: #d29922 !important;
+}
+.text-danger,
+.xo-status-halted {
+  color: #f85149 !important;
+}
+
+// side menu
+.xo-menu,
+.xo-sub-menu {
+  background: #12161b;
+}
+
+// xo-web's react-select tweaks hard-code dark text
+.Select-value-label,
+.Select--single > .Select-control .Select-value {
+  color: $xoi-dark-text !important;
+}
+.Select-placeholder {
+  color: $xoi-dark-text-muted;
+}
+.Select-menu-outer .Select-option.is-disabled {
+  color: $xoi-dark-text-muted;
+}
+
+// meters (SR usage) and usage bars
+meter,
+meter::-webkit-meter-bar,
+.usage,
+.limits {
+  background: $xoi-dark-surface-3;
+}
+.usage-element {
+  box-shadow: -1px 0 0 0 $xoi-dark-bg;
+}
+
+// component styles ------------------------------------------------------------
+
+// home page lists (VMs, hosts, pools, SRs...)
+[class*='_itemContainer'] {
+  border-color: $xoi-dark-border !important;
+}
+[class*='_itemContainerHeader'] {
+  background: $xoi-dark-surface-2 !important;
+}
+[class$='_item'],
+[class*='_item '] {
+  border-bottom-color: $xoi-dark-border !important;
+}
+[class$='_item']:hover,
+[class*='_item ']:hover {
+  background: $xoi-dark-surface-2 !important;
+}
+[class*='_itemActionButons']:hover {
+  color: $xoi-dark-text !important;
+}
+
+// file drop zones (VM import, config import)
+[class*='_activeDropzone'] {
+  background: $xoi-dark-surface-2 !important;
+}
+
+// migrate VM modal
+[class*='_groupBlock'] {
+  border-top-color: $xoi-dark-border !important;
+}
+
+// stats charts
+[class*='_dashedLine'] {
+  stroke: $xoi-dark-text-muted !important;
+}
+
+// colours set inline from JavaScript -------------------------------------------
+
+// black chart axes
+[style*='stroke: rgb(0, 0, 0)'],
+[stroke='#000'],
+[stroke='black'] {
+  stroke: $xoi-dark-text-muted !important;
+}
+
+// empty cells of the weekly heatmap
+td[style*='background: rgb(255, 255, 255)'] {
+  background: $xoi-dark-surface !important;
+}
+
+// the white value part of tags
+[style*='background: rgb(255, 255, 255)'][style*='color: rgb(0, 0, 0)'] {
+  background: $xoi-dark-surface-2 !important;
+  color: $xoi-dark-text !important;
+}

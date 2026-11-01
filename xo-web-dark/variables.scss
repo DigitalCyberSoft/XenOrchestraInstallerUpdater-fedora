@@ -1,0 +1,160 @@
+// Dark theme for Xen Orchestra 5 (xo-web), added by xo-install.sh when XO_WEB_THEME="dark".
+//
+// xo-web has no dark mode of its own. This file is imported by xo-web's index.scss right
+// before Bootstrap, so Bootstrap, react-select and Chartist are compiled with dark colours.
+// What these variables don't reach is handled in overrides.scss.
+
+$xoi-dark-bg: #181c21;
+$xoi-dark-surface: #22272e;
+$xoi-dark-surface-2: #2d333b;
+$xoi-dark-surface-3: #373e47;
+$xoi-dark-border: #3d444d;
+$xoi-dark-text: #d1d7e0;
+$xoi-dark-text-muted: #8b949e;
+$xoi-dark-link: #6cb6ff;
+
+// Bootstrap 4 (alpha) ---------------------------------------------------------
+
+// light greys used as backgrounds: page header, table head, disabled inputs, nav hover...
+$gray-lighter: $xoi-dark-surface-2;
+$gray-lightest: $xoi-dark-surface;
+
+$body-bg: $xoi-dark-bg;
+$body-color: $xoi-dark-text;
+$link-color: $xoi-dark-link;
+$link-hover-color: lighten($xoi-dark-link, 10%);
+$text-muted: $xoi-dark-text-muted;
+$hr-border-color: rgba(255, 255, 255, 0.1);
+$blockquote-border-color: $xoi-dark-border;
+
+$table-bg-accent: rgba(255, 255, 255, 0.04);
+$table-bg-hover: rgba(255, 255, 255, 0.07);
+$table-bg-active: rgba(255, 255, 255, 0.07);
+$table-border-color: $xoi-dark-border;
+
+$btn-secondary-color: $xoi-dark-text;
+$btn-secondary-bg: $xoi-dark-surface-2;
+$btn-secondary-border: $xoi-dark-border;
+
+$input-bg: $xoi-dark-surface;
+$input-bg-disabled: $xoi-dark-surface-2;
+$input-color: $xoi-dark-text;
+$input-border-color: $xoi-dark-border;
+$input-color-placeholder: #6e7681;
+$input-group-addon-bg: $xoi-dark-surface-2;
+
+$custom-control-indicator-bg: $xoi-dark-surface-3;
+$custom-control-disabled-indicator-bg: $xoi-dark-surface-2;
+$custom-control-disabled-description-color: $xoi-dark-text-muted;
+$custom-select-bg: $xoi-dark-surface;
+$custom-select-color: $xoi-dark-text;
+$custom-select-disabled-bg: $xoi-dark-surface-2;
+$custom-select-indicator-color: #d1d7e0;
+$custom-file-color: $xoi-dark-text;
+$custom-file-bg: $xoi-dark-surface;
+$custom-file-border-color: $xoi-dark-border;
+$custom-file-button-bg: $xoi-dark-surface-2;
+
+$dropdown-bg: $xoi-dark-surface;
+$dropdown-border-color: $xoi-dark-border;
+$dropdown-divider-bg: $xoi-dark-border;
+$dropdown-link-color: $xoi-dark-text;
+$dropdown-link-hover-color: #fff;
+$dropdown-link-hover-bg: $xoi-dark-surface-3;
+$dropdown-header-color: $xoi-dark-text-muted;
+
+$navbar-light-color: rgba(255, 255, 255, 0.6);
+$navbar-light-hover-color: rgba(255, 255, 255, 0.8);
+$navbar-light-active-color: #fff;
+$navbar-light-disabled-color: rgba(255, 255, 255, 0.3);
+$navbar-light-toggler-border: rgba(255, 255, 255, 0.1);
+
+$nav-link-hover-bg: $xoi-dark-surface-2;
+$nav-tabs-border-color: $xoi-dark-border;
+$nav-tabs-link-hover-border-color: $xoi-dark-surface-3;
+$nav-tabs-active-link-hover-color: $xoi-dark-text;
+$nav-tabs-active-link-hover-bg: $xoi-dark-bg;
+$nav-tabs-active-link-hover-border-color: $xoi-dark-border;
+$nav-tabs-justified-link-border-color: $xoi-dark-border;
+$nav-tabs-justified-active-link-border-color: $xoi-dark-bg;
+
+$pagination-bg: $xoi-dark-surface;
+$pagination-border-color: $xoi-dark-border;
+$pagination-hover-bg: $xoi-dark-surface-3;
+$pagination-hover-border: $xoi-dark-border;
+$pagination-disabled-bg: $xoi-dark-surface;
+$pagination-disabled-border: $xoi-dark-border;
+
+$jumbotron-bg: $xoi-dark-surface-2;
+
+// alerts and notifications
+$state-success-text: #7ee2a8;
+$state-success-bg: #12261e;
+$state-success-border: #1f4a33;
+$state-info-text: #8ccaff;
+$state-info-bg: #0c2d48;
+$state-info-border: #164a72;
+$state-warning-text: #f0c674;
+$state-warning-bg: #3a2c0b;
+$state-warning-border: #5c4813;
+$state-danger-text: #ff9492;
+$state-danger-bg: #3b1219;
+$state-danger-border: #632028;
+
+$card-bg: $xoi-dark-surface;
+$card-cap-bg: $xoi-dark-surface-2;
+$card-border-color: $xoi-dark-border;
+
+$popover-bg: $xoi-dark-surface-2;
+$popover-border-color: $xoi-dark-border;
+
+$modal-content-bg: $xoi-dark-surface;
+$modal-content-border-color: $xoi-dark-border;
+$modal-header-border-color: $xoi-dark-border;
+
+$progress-bg: $xoi-dark-surface-3;
+
+$list-group-bg: $xoi-dark-surface;
+$list-group-border-color: $xoi-dark-border;
+$list-group-hover-bg: $xoi-dark-surface-2;
+$list-group-link-color: $xoi-dark-text;
+$list-group-link-heading-color: #fff;
+$list-group-disabled-bg: $xoi-dark-surface-2;
+
+$thumbnail-bg: $xoi-dark-surface;
+$thumbnail-border-color: $xoi-dark-border;
+
+$breadcrumb-bg: $xoi-dark-surface-2;
+
+$close-color: #fff;
+$close-text-shadow: none;
+
+$code-color: #ff938a;
+$code-bg: $xoi-dark-surface-2;
+$kbd-bg: $xoi-dark-surface-3;
+$pre-bg: $xoi-dark-surface;
+$pre-color: $xoi-dark-text;
+$pre-border-color: $xoi-dark-border;
+
+// react-select (selects and multi-selects everywhere) -------------------------
+
+$select-input-bg: $xoi-dark-surface;
+$select-input-bg-disabled: $xoi-dark-surface-2;
+$select-input-border-color: $xoi-dark-border;
+$select-text-color: $xoi-dark-text;
+$select-option-color: $xoi-dark-text;
+$select-option-bg: $xoi-dark-surface;
+$select-option-focused-color: #fff;
+$select-option-focused-bg: $xoi-dark-surface-3;
+$select-option-selected-color: $xoi-dark-text;
+$select-option-selected-bg: $xoi-dark-surface-2;
+$select-option-disabled-color: $xoi-dark-text-muted;
+$select-noresults-color: $xoi-dark-text-muted;
+$select-item-color: $xoi-dark-link;
+$select-item-bg: $xoi-dark-surface-3;
+$select-item-border-color: $xoi-dark-border;
+
+// Chartist (stats graphs) -----------------------------------------------------
+
+$ct-text-color: rgba(255, 255, 255, 0.55);
+$ct-grid-color: rgba(255, 255, 255, 0.15);
