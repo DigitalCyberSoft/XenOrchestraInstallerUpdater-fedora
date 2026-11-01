@@ -1,8 +1,10 @@
-// Dark theme for Xen Orchestra 5 (xo-web), added by xo-install.sh when XO_WEB_THEME="dark".
+// Dark theme for Xen Orchestra 5 (xo-web), added by xo-install.sh.
 //
-// xo-web has no dark mode of its own. This file is imported by xo-web's index.scss right
-// before Bootstrap, so Bootstrap, react-select and Chartist are compiled with dark colours.
-// What these variables don't reach is handled in dark-overrides.scss.
+// xo-web has no dark mode of its own. xo-install.sh builds a second stylesheet, index-dark.css,
+// from index-dark.scss: a copy of xo-web's index.scss that imports this file right before
+// Bootstrap, so Bootstrap, react-select and Chartist are compiled with dark colours. What these
+// variables don't reach is handled in dark-overrides.scss. theme-switch.js switches between the
+// two stylesheets at runtime.
 
 $xoi-dark-bg: #181c21;
 $xoi-dark-surface: #22272e;

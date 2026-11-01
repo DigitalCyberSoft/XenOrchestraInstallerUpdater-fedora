@@ -1,0 +1,24 @@
+// Theme entry at the bottom of the Xen Orchestra 5 (xo-web) menu, added by xo-install.sh. Clicking it
+// cycles auto → light → dark (theme-switch.js). The label comes from <html data-xoi-theme>, which
+// theme-switch.js sets. Imported into both index.css and index-dark.css.
+
+// without theme-switch.js there's nothing to switch
+html:not([data-xoi-theme]) .xoi-theme-item {
+  display: none !important;
+}
+
+.xoi-theme-item .nav-link {
+  cursor: pointer;
+}
+
+.xoi-theme-label::after {
+  content: 'Theme: auto';
+}
+
+html[data-xoi-theme='light'] .xoi-theme-label::after {
+  content: 'Theme: light';
+}
+
+html[data-xoi-theme='dark'] .xoi-theme-label::after {
+  content: 'Theme: dark';
+}

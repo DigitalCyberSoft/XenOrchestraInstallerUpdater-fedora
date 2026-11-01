@@ -1,6 +1,6 @@
 // Dark theme for Xen Orchestra 5 (xo-web): what dark-variables.scss can't reach.
 //
-// Appended to the end of xo-web's index.scss by xo-install.sh, so it can use the
+// Appended to the end of index-dark.scss (a copy of xo-web's index.scss) by xo-install.sh, so it can use the
 // $xoi-dark-* colours from dark-variables.scss. Covers xo-web's own global styles, its
 // component styles (CSS modules, compiled to class names like .mc1234abcd_item, hence
 // the attribute selectors) and colours set inline from JavaScript.
@@ -115,4 +115,10 @@ td[style*='background: rgb(255, 255, 255)'] {
 [style*='background: rgb(255, 255, 255)'][style*='color: rgb(0, 0, 0)'] {
   background: $xoi-dark-surface-2 !important;
   color: $xoi-dark-text !important;
+}
+
+// state buttons (the enabled/disabled toggles) take their background from xo-web's styled-components
+// theme, which xo-install.sh points at this variable (white when it isn't set, in the light theme)
+:root {
+  --xoi-state-bg: #{$xoi-dark-surface};
 }

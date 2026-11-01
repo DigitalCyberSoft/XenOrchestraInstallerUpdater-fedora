@@ -1646,10 +1646,12 @@ function AskWebUIPreferences {
 
     if [[ -z "$XO_WEB_THEME" ]]; then
         echo
-        read -r -p "Theme for the Xen Orchestra 5 (v5) web UI, light or dark? [light/dark] (light): " ANSWER || ANSWER=""
+        echo "Theme Xen Orchestra 5 (v5) starts with. Each browser can change it later from the menu."
+        read -r -p "light, dark or auto (follows the system)? [light/dark/auto] (auto): " ANSWER || ANSWER=""
         case "${ANSWER,,}" in
+            l | light) XO_WEB_THEME="light" ;;
             d | dark) XO_WEB_THEME="dark" ;;
-            *) XO_WEB_THEME="light" ;;
+            *) XO_WEB_THEME="auto" ;;
         esac
         SaveConfigOption XO_WEB_THEME "$XO_WEB_THEME"
     fi
@@ -1668,8 +1670,9 @@ function AskWebUIPreferences {
 # Customizations of Xen Orchestra 5 (xo-web), added to its sources before it is built. The files are in
 # xo-web-custom/. If xo-web has changed so that one can't be added, it is skipped with a warning and the
 # install/update carries on.
-#  - XO_WEB_THEME="dark": xo-web has no dark mode of its own. dark-variables.scss goes in before
-#    Bootstrap is imported, dark-overrides.scss at the end of index.scss
+#  - XO_WEB_THEME="light"/"dark"/"auto": the theme browsers start with. xo-web has no dark mode of its
+#    own, so a dark stylesheet is built next to the normal one and a Theme entry at the bottom of the
+#    menu switches between auto, light and dark, remembered per browser (see the end of this function)
 #  - HIDE_SOURCE_NOTICES="true": hide-source-notices.scss hides the "no support" banner and menu entry
 #    and the XOA menu entry, the weekly disclaimer pop-up is turned off in xo-app/index.js
 #  - XO_WEB_ITEMS_PER_PAGE / XO_WEB_SHOW_ALL: home page lists show that many items per page by default,
@@ -1679,25 +1682,6 @@ function CustomizeXoWeb {
     local BUILD_DIR="$INSTALLDIR/xo-builds/xen-orchestra-$TIME"
     local WEB_SRC="$BUILD_DIR/packages/xo-web/src"
     local CUSTOM_DIR="$SCRIPT_DIR/xo-web-custom"
-
-    if [[ "$XO_WEB_THEME" == "dark" ]]; then
-        echo
-        printprog "Adding dark theme to Xen Orchestra 5"
-        if [[ -f "$CUSTOM_DIR/dark-variables.scss" ]] && [[ -f "$CUSTOM_DIR/dark-overrides.scss" ]] &&
-            grep -qF "@import '../../../node_modules/bootstrap/scss/bootstrap';" "$WEB_SRC/index.scss" 2>/dev/null &&
-            runcmd "cp \"$CUSTOM_DIR/dark-variables.scss\" \"$WEB_SRC/_xoi-dark-variables.scss\" && cp \"$CUSTOM_DIR/dark-overrides.scss\" \"$WEB_SRC/_xoi-dark-overrides.scss\"" &&
-            runcmd "sed -i \"\\#^@import '../../../node_modules/bootstrap/scss/bootstrap';#i @import './xoi-dark-variables';\" \"$WEB_SRC/index.scss\"" &&
-            runcmd "echo \"@import './xoi-dark-overrides';\" >> \"$WEB_SRC/index.scss\"" &&
-            grep -qF "@import './xoi-dark-variables';" "$WEB_SRC/index.scss"; then
-            # state buttons take their background from xo-web's styled-components theme
-            runcmd "sed -i \"s/StateBg: '#fff'/StateBg: '#22272e'/\" \"$WEB_SRC/common/themes/base.js\"" || true
-            printok "Adding dark theme to Xen Orchestra 5"
-        else
-            runcmd "git -C \"$BUILD_DIR\" checkout -- packages/xo-web/src" || true
-            printfail "Adding dark theme to Xen Orchestra 5"
-            echo "    xo-web's stylesheets have changed, building the default light theme instead"
-        fi
-    fi
 
     if [[ "$HIDE_SOURCE_NOTICES" == "true" ]]; then
         echo
@@ -1755,6 +1739,83 @@ function CustomizeXoWeb {
         fi
     fi
 
+    # Light / dark / auto theme, done last so the dark stylesheet gets every customization above.
+    #  - index-dark.scss is a copy of index.scss that imports dark-variables.scss before Bootstrap and
+    #    dark-overrides.scss at the end. An extra gulp task builds it into index-dark.css, like index.css
+    #  - index.html loads index-dark.css after index.css, and theme-switch.js (in assets/, the page's
+    #    content security policy blocks inline scripts) turns it on and off through its media attribute
+    #  - a Theme entry at the bottom of the menu cycles auto, light and dark; the state buttons, coloured
+    #    from JavaScript, follow a CSS variable that only the dark stylesheet sets
+    # If any of it can't be added, all of it is undone and the light theme is built alone.
+    local THEME_MODE="$XO_WEB_THEME"
+    [[ "$THEME_MODE" =~ ^(light|dark|auto)$ ]] || THEME_MODE="auto"
+    local NL=$'\n'
+    local XO_WEB_DIR="$BUILD_DIR/packages/xo-web"
+    local BOOTSTRAP_IMPORT="@import '../../../node_modules/bootstrap/scss/bootstrap';"
+    echo
+    printprog "Adding the light/dark theme switch to Xen Orchestra 5 (starting with $THEME_MODE)"
+    if [[ -f "$CUSTOM_DIR/dark-variables.scss" ]] && [[ -f "$CUSTOM_DIR/dark-overrides.scss" ]] &&
+        [[ -f "$CUSTOM_DIR/theme-switch.scss" ]] && [[ -f "$CUSTOM_DIR/theme-switch.js" ]] &&
+        [[ -d "$WEB_SRC/assets" ]] &&
+        runcmd "cp \"$WEB_SRC/index.scss\" \"$WEB_SRC/.index.scss.xoi\"" &&
+        runcmd "cp \"$CUSTOM_DIR/theme-switch.scss\" \"$WEB_SRC/_xoi-theme-switch.scss\" && echo \"@import './xoi-theme-switch';\" >> \"$WEB_SRC/index.scss\"" &&
+        runcmd "cp \"$WEB_SRC/index.scss\" \"$WEB_SRC/index-dark.scss\"" &&
+        runcmd "cp \"$CUSTOM_DIR/dark-variables.scss\" \"$WEB_SRC/_xoi-dark-variables.scss\" && cp \"$CUSTOM_DIR/dark-overrides.scss\" \"$WEB_SRC/_xoi-dark-overrides.scss\"" &&
+        ReplaceInSource "$WEB_SRC/index-dark.scss" \
+            "$BOOTSTRAP_IMPORT" \
+            "@import './xoi-dark-variables';${NL}${BOOTSTRAP_IMPORT}" &&
+        runcmd "echo \"@import './xoi-dark-overrides';\" >> \"$WEB_SRC/index-dark.scss\"" &&
+        runcmd "sed 's/@DEFAULT_MODE@/$THEME_MODE/' \"$CUSTOM_DIR/theme-switch.js\" > \"$WEB_SRC/assets/xoi-theme-switch.js\"" &&
+        ReplaceInSource "$WEB_SRC/common/themes/base.js" \
+            "StateBg: '#fff'," \
+            "StateBg: 'var(--xoi-state-bg, #fff)', // xo-install.sh (XO_WEB_THEME)" 2 &&
+        ReplaceInSource "$WEB_SRC/xo-app/menu/index.js" \
+            "          {!state.isXoaStatusOk && (" \
+            "          {/* theme switch, added by xo-install.sh (XO_WEB_THEME) */}
+          <li className='nav-item xo-menu-item xoi-theme-item'>
+            <a className='nav-link' style={LINK_STYLE} role='button' title='Theme: auto, light or dark' onClick={() => window.xoiTheme?.cycle()}>
+              <span className={styles.hiddenCollapsed}>
+                <i className='fa fa-adjust fa-lg fa-fw' /> <span className='xoi-theme-label' />
+              </span>
+              <span className={styles.hiddenUncollapsed}>
+                <i className='fa fa-adjust fa-lg fa-fw' />
+              </span>
+            </a>
+          </li>
+          {!state.isXoaStatusOk && (" &&
+        ReplaceInSource "$WEB_SRC/index.pug" \
+            "    link(${NL}      rel = 'stylesheet'${NL}      href = 'index.css'${NL}    )" \
+            "    link(${NL}      rel = 'stylesheet'${NL}      href = 'index.css'${NL}    )
+    //- dark theme and its switch, added by xo-install.sh (XO_WEB_THEME)
+    link#xoi-dark-theme(
+      rel = 'stylesheet'
+      href = 'index-dark.css'
+      media = '(prefers-color-scheme: dark)'
+    )
+    script(src = 'assets/xoi-theme-switch.js')" &&
+        ReplaceInSource "$XO_WEB_DIR/gulpfile.js" \
+            "gulp.task('build', gulp.parallel('buildPages', 'buildScripts', 'buildStyles', 'copyAssets'))" \
+            "// index-dark.css, the dark theme, built like index.css. Added by xo-install.sh (XO_WEB_THEME)
+gulp.task(function buildDarkStyles() {
+  return pipe(
+    src('index-dark.scss', { sourcemaps: true }),
+    require('gulp-sass')(require('sass'))(),
+    require('gulp-autoprefixer')(['last 1 version', '> 1%']),
+    PRODUCTION && require('gulp-csso')(),
+    dest()
+  )
+})
+
+gulp.task('build', gulp.parallel('buildPages', 'buildScripts', 'buildStyles', 'buildDarkStyles', 'copyAssets'))"; then
+        printok "Adding the light/dark theme switch to Xen Orchestra 5 (starting with $THEME_MODE)"
+    else
+        [[ -f "$WEB_SRC/.index.scss.xoi" ]] && runcmd "cp \"$WEB_SRC/.index.scss.xoi\" \"$WEB_SRC/index.scss\""
+        runcmd "git -C \"$BUILD_DIR\" checkout -- packages/xo-web/src/common/themes/base.js packages/xo-web/src/xo-app/menu/index.js packages/xo-web/src/index.pug packages/xo-web/gulpfile.js" || true
+        runcmd "rm -f \"$WEB_SRC/index-dark.scss\" \"$WEB_SRC\"/_xoi-dark-*.scss \"$WEB_SRC/_xoi-theme-switch.scss\" \"$WEB_SRC/assets/xoi-theme-switch.js\"" || true
+        printfail "Adding the light/dark theme switch to Xen Orchestra 5 (starting with $THEME_MODE)"
+        echo "    xo-web's code has changed, building the light theme only"
+    fi
+    runcmd "rm -f \"$WEB_SRC/.index.scss.xoi\"" || true
 }
 
 # replace a piece of text in a source file ($1 = file, $2 = text, $3 = replacement, $4 = how many times
