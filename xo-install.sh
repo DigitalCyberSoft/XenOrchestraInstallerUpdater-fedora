@@ -116,7 +116,8 @@ function SelfUpgrade {
 
     if [[ -d "$SCRIPT_DIR/.git" ]] && [[ -n $(runcmd_stdout "command -v git") ]]; then
         local REMOTE="$(runcmd_stdout "git -C $SCRIPT_DIR config --get remote.origin.url")"
-        if [[ "$REMOTE" == *"ronivay/XenOrchestraInstallerUpdater"* ]]; then
+        # this Fedora fork upgrades itself from its own repository
+        if [[ "$REMOTE" == *"ronivay/XenOrchestraInstallerUpdater"* ]] || [[ "$REMOTE" == *"DigitalCyberSoft/XenOrchestraInstallerUpdater-fedora"* ]]; then
             if [[ -n $(runcmd_stdout "git -C $SCRIPT_DIR status --porcelain") ]]; then
                 printfail "Local changes in this script directory. Not attempting to self upgrade"
                 return 0
@@ -124,7 +125,8 @@ function SelfUpgrade {
             runcmd "git -C $SCRIPT_DIR fetch"
             local OLD_SCRIPT_VERSION="$(runcmd_stdout "git -C $SCRIPT_DIR rev-parse --short HEAD")"
             local NEW_SCRIPT_VERSION="$(runcmd_stdout "git -C $SCRIPT_DIR rev-parse --short FETCH_HEAD")"
-            if [[ $(runcmd_stdout "git -C $SCRIPT_DIR diff --name-only @{upstream} | grep xo-install.sh") ]]; then
+            # xo-web-custom/ holds the files the xo-web customizations are built from
+            if [[ $(runcmd_stdout "git -C $SCRIPT_DIR diff --name-only @{upstream} | grep -E '^(xo-install.sh|xo-web-custom/)'") ]]; then
                 printinfo "Newer version of script available, attempting to self upgrade from '$OLD_SCRIPT_VERSION' to '$NEW_SCRIPT_VERSION'"
                 runcmd "git -C $SCRIPT_DIR pull --ff-only" &&
                     {
