@@ -1667,8 +1667,8 @@ function AskWebUIPreferences {
 # install/update carries on.
 #  - XO_WEB_THEME="dark": xo-web has no dark mode of its own. dark-variables.scss goes in before
 #    Bootstrap is imported, dark-overrides.scss at the end of index.scss
-#  - HIDE_SOURCE_NOTICES="true": hide-source-notices.scss hides the "no support" banner and menu entry,
-#    the weekly disclaimer pop-up is turned off in xo-app/index.js
+#  - HIDE_SOURCE_NOTICES="true": hide-source-notices.scss hides the "no support" banner and menu entry
+#    and the XOA menu entry, the weekly disclaimer pop-up is turned off in xo-app/index.js
 function CustomizeXoWeb {
 
     local BUILD_DIR="$INSTALLDIR/xo-builds/xen-orchestra-$TIME"

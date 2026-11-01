@@ -15,3 +15,9 @@
 .xo-menu-item:has(> a[href$='/about'] .text-warning) {
   display: none !important;
 }
+
+// "XOA" entry of the side menu (with its updates, licences, notifications and support pages) and the
+// "Check XOA" warning entry. They're for the XOA appliance; the pages stay reachable at #/xoa/...
+.xo-menu-item:has(> a[href*='xoa/']) {
+  display: none !important;
+}
