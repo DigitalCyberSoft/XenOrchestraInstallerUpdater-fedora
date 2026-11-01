@@ -61,6 +61,9 @@ XO_WEB_THEME="${XO_WEB_THEME:-""}"
 DEFAULT_WEB_UI="${DEFAULT_WEB_UI:-""}"
 HIDE_SOURCE_NOTICES="${HIDE_SOURCE_NOTICES:-"true"}"
 ENABLE_XOSTOR="${ENABLE_XOSTOR:-"true"}"
+# an empty XO_WEB_ITEMS_PER_PAGE (set in xo-install.cfg) keeps xo-web's own default of 20
+XO_WEB_ITEMS_PER_PAGE="${XO_WEB_ITEMS_PER_PAGE-"500"}"
+XO_WEB_SHOW_ALL="${XO_WEB_SHOW_ALL:-"true"}"
 
 # set variables not changeable in configfile
 TIME=$(date +%Y%m%d%H%M)
@@ -1669,6 +1672,8 @@ function AskWebUIPreferences {
 #    Bootstrap is imported, dark-overrides.scss at the end of index.scss
 #  - HIDE_SOURCE_NOTICES="true": hide-source-notices.scss hides the "no support" banner and menu entry
 #    and the XOA menu entry, the weekly disclaimer pop-up is turned off in xo-app/index.js
+#  - XO_WEB_ITEMS_PER_PAGE / XO_WEB_SHOW_ALL: home page lists show that many items per page by default,
+#    and all VMs and hosts instead of only the running ones
 function CustomizeXoWeb {
 
     local BUILD_DIR="$INSTALLDIR/xo-builds/xen-orchestra-$TIME"
@@ -1711,25 +1716,64 @@ function CustomizeXoWeb {
             echo "    xo-web's files have changed, the notices stay"
         fi
     fi
+
+    # home page lists: how many items a page shows when the user hasn't picked a number yet, and whether
+    # the VM and host lists show everything instead of only what's running
+    if [[ -n "$XO_WEB_ITEMS_PER_PAGE" ]] || [[ "$XO_WEB_SHOW_ALL" == "true" ]]; then
+        echo
+        printprog "Setting the home page defaults of Xen Orchestra 5"
+        local HOME_OK="true"
+        local HOME_WHY="xo-web's home page code has changed, keeping its own defaults"
+        if [[ -n "$XO_WEB_ITEMS_PER_PAGE" ]]; then
+            if [[ "$XO_WEB_ITEMS_PER_PAGE" =~ ^[1-9][0-9]{0,4}$ ]]; then
+                # offer the number in the page size menus too, which every table of xo-web shares
+                local PAGE_OPTIONS
+                PAGE_OPTIONS=$(printf '%s\n' 10 20 50 100 "$XO_WEB_ITEMS_PER_PAGE" | sort -nu | paste -sd, - | sed 's/,/, /g')
+                ReplaceInSource "$WEB_SRC/common/xo/index.js" \
+                    "export const ITEMS_PER_PAGE_OPTIONS = [10, 20, 50, 100]" \
+                    "export const ITEMS_PER_PAGE_OPTIONS = [$PAGE_OPTIONS] // xo-install.sh (XO_WEB_ITEMS_PER_PAGE)" &&
+                    ReplaceInSource "$WEB_SRC/xo-app/home/index.js" \
+                        "const DEFAULT_ITEMS_PER_PAGE = 20" \
+                        "const DEFAULT_ITEMS_PER_PAGE = $XO_WEB_ITEMS_PER_PAGE // xo-install.sh (XO_WEB_ITEMS_PER_PAGE)" ||
+                    HOME_OK="false"
+            else
+                HOME_OK="false"
+                HOME_WHY="XO_WEB_ITEMS_PER_PAGE=\"$XO_WEB_ITEMS_PER_PAGE\" isn't a number from 1 to 99999, keeping xo-web's defaults"
+            fi
+        fi
+        if [[ "$HOME_OK" == "true" ]] && [[ "$XO_WEB_SHOW_ALL" == "true" ]]; then
+            ReplaceInSource "$WEB_SRC/xo-app/home/index.js" \
+                "defaultFilter: 'power_state:running '," \
+                "defaultFilter: '', // xo-install.sh (XO_WEB_SHOW_ALL)" 2 || HOME_OK="false"
+        fi
+        if [[ "$HOME_OK" == "true" ]]; then
+            printok "Setting the home page defaults of Xen Orchestra 5"
+        else
+            runcmd "git -C \"$BUILD_DIR\" checkout -- packages/xo-web/src/common/xo/index.js packages/xo-web/src/xo-app/home/index.js" || true
+            printfail "Setting the home page defaults of Xen Orchestra 5"
+            echo "    $HOME_WHY"
+        fi
+    fi
+
 }
 
-# replace the one occurrence of a piece of text in a source file ($1 = file, $2 = text, $3 = replacement).
-# The text is matched exactly, not as a pattern. Fails without changing the file if the text isn't
-# there exactly once
+# replace a piece of text in a source file ($1 = file, $2 = text, $3 = replacement, $4 = how many times
+# the text is expected to be there, 1 when not given). The text is matched exactly, not as a pattern.
+# Fails without changing the file if the text isn't there that many times
 function ReplaceInSource {
 
     echo "+ replace in $1: $2" >>"$LOGFILE"
     node -e '
         const fs = require("fs")
-        const [file, text, replacement] = process.argv.slice(1)
+        const [file, text, replacement, expected] = process.argv.slice(1)
         const source = fs.readFileSync(file, "utf8")
         const count = source.split(text).length - 1
-        if (count !== 1) {
-            console.error(`found ${count} times instead of once`)
+        if (count !== Number(expected)) {
+            console.error(`found ${count} times instead of ${expected}`)
             process.exit(1)
         }
-        fs.writeFileSync(file, source.replace(text, () => replacement))
-    ' "$1" "$2" "$3" >>"$LOGFILE" 2>&1
+        fs.writeFileSync(file, source.split(text).join(replacement))
+    ' "$1" "$2" "$3" "${4:-1}" >>"$LOGFILE" 2>&1
 }
 
 # Xen Orchestra keeps XOSTOR (hyperconverged storage on LINSTOR/DRBD) for XOA. From the sources its
